@@ -248,6 +248,12 @@ fn is_cjk(c: char) -> bool {
     matches!(c as u32, 0x3000..=0x9FFF | 0xF900..=0xFAFF | 0xFF00..=0xFFEF | 0x20000..=0x2FFFF)
 }
 
+/// Hangul jamo and syllables (the Korean catalog). Like the CJK characters, they come from an optional
+/// build input or the installed fonts, so the bundled-font check leaves them out.
+fn is_hangul(c: char) -> bool {
+    matches!(c as u32, 0x1100..=0x11FF | 0xAC00..=0xD7AF)
+}
+
 /// The UI fonts draw every character the catalogs use, in every family the UI draws text with
 /// (the web build has no system fonts to fall back to). Chinese and Japanese characters come from
 /// the craft-fonts build input, which is optional: without it they are left to the installed
@@ -271,8 +277,11 @@ fn bundled_fonts_cover_the_catalogs() {
         for l in LANGUAGES.iter().filter(|l| !l.source.is_empty()) {
             let (entries, _) = parse_entries(l.source);
             let cjk_checked = japanese_ui_font && l.code == "ja";
-            let chars: std::collections::BTreeSet<char> =
-                entries.iter().flat_map(|(_, _, tr)| tr.chars()).filter(|c| !c.is_whitespace() && (cjk_checked || !is_cjk(*c))).collect();
+            let chars: std::collections::BTreeSet<char> = entries
+                .iter()
+                .flat_map(|(_, _, tr)| tr.chars())
+                .filter(|c| !c.is_whitespace() && (cjk_checked || !(is_cjk(*c) || is_hangul(*c))))
+                .collect();
             for family in &families {
                 let font = egui::FontId::new(13.0, family.clone());
                 let gone: String = chars.iter().filter(|c| !fonts.has_glyph(&font, **c)).collect();

@@ -1,6 +1,6 @@
 # Localization parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first per-language table, measured from the catalogs) · **Target:** Adobe Illustrator 2026 (30.x)
+> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-10-11 · **Change:** major (first per-language table, measured from the catalogs) · **Target:** Adobe Illustrator 2026 (30.x)
 
 Per-language status of VectorCraft's interface. How the catalogs work and how to add a language:
 [`development.md` › Localisation](development.md#localisation). Part of
@@ -32,7 +32,7 @@ Chinese by `imachus`). None is recorded as reviewed by a native speaker; the cat
 | Indonesian | `id` | 0 | none | Latin | no | none | 5–8 |
 | Japanese | `ja` | 4,004 / 4,020 (99.6%) | all | CJK UI font as above; Japanese IME; vertical type partial; Japanese crop marks and composition settings | no | full | — (review) |
 | German | `de` | 3,952 / 4,020 (98%; tests hold menus, literals and messages complete) | all (602 of 604 message rows; landed 2026-10-10) | Latin | contributor-written, not reviewed | full | — (review) |
-| Korean | `ko` | 0 | none | Hangul needs a UI font in craft-fonts; the IME path exists | no | none | 6–10 |
+| Korean | `ko` | 4,072 / 4,072 (every row: menus, literals, messages, plurals; the product, workspace and preset names stay English as in `ja`) | all (605 `@msg` rows) | Hangul from the installed fonts (Malgun Gothic, Apple SD Gothic Neo, Noto Sans CJK KR); the glyph check leaves Hangul out, as it does CJK. No Korean face in craft-fonts yet, and the web build has no system fonts, so Hangul boxes there until one is added. The IME path exists | no | partial | 4–6 (native review, Korean face for web) |
 | Vietnamese | `vi` | 0 | none | Latin with stacked diacritics (precomposed forms render) | no | none | 5–8 |
 
 **12-language score: ~54%** (equal weights: 100 + 85 + 100 + 0 + 0 + 100 + 68 + 0 + 100 + 98 + 0 + 0, over 12).
@@ -64,3 +64,4 @@ font for the web build.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-10 | major | First per-language table, measured from the catalog row counts against the complete French catalog |
+| 2026-10-11 | minor | Korean catalog `ko.tsv` added (4,072 rows, clean-room, written from the English meanings); Hangul glyph check left to installed fonts; `KEEPS_MENU_NAMES` gains `ko` |
