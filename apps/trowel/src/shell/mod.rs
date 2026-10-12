@@ -21,6 +21,7 @@ pub mod menubar;
 pub mod menus;
 pub mod ribbon;
 pub mod right_column;
+pub mod start_screen;
 pub mod status;
 // The palette and the bar heights are the design's, complete on purpose: J003 draws with
 // the ribbon tile roles and the heights, and J001 carries the rest through the interface.
@@ -70,7 +71,11 @@ pub fn trowel_frame(app: &mut VectorcraftApp, ui: &mut Ui, fonts: &mut fonts::Fa
         if chrome_on {
             chrome::doc_tabs(app, ui);
         }
-        canvas::show(app, ui);
+        // With nothing open, the canvas would show VectorCraft's Home view. Trowel draws its
+        // own start screen there instead (J004), so no archaeology ever appears as VectorCraft.
+        if !start_screen::show_if_empty(app, ui, app.ui_language().code()) {
+            canvas::show(app, ui);
+        }
     });
 
     // Panels torn out of their dock, the modal dialogs, the command palette.
