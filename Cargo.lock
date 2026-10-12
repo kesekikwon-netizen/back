@@ -4133,6 +4133,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "trowel"
+version = "0.8.0"
+dependencies = [
+ "clipboard-win",
+ "eframe",
+ "egui",
+ "log",
+ "rfd",
+ "serde_json",
+ "vectorcraft-engine",
+ "vectorcraft-text",
+ "vectorcraft-ui-egui",
+ "webbrowser",
+ "winit",
+]
+
+[[package]]
+name = "trowel-engine"
+version = "0.8.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "ttf-parser"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

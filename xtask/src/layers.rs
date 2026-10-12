@@ -63,6 +63,8 @@ pub const TABLE: &[(&str, Class)] = &[
     ("plugins", Class::Layer(2)),
     ("affinity", Class::Standalone),
     // Trowel: the archaeological shell over the same engine (apps/trowel/src/shell).
+    // Trowel: the archaeological domain, beside the egui shell.
+    ("trowel-engine", Class::Layer(6)),
     ("trowel", Class::Exempt),
 ];
 
