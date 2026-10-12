@@ -1,0 +1,36 @@
+[package]
+name = "trowel"
+description = "Trowel: archaeological excavation drawing (a VectorCraft shell)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+default-run = "trowel"
+
+[lints]
+workspace = true
+
+[features]
+default = ["wgpu", "accessibility"]
+# Same renderer choices as the VectorCraft app; `windows7` swaps wgpu for OpenGL.
+wgpu = ["eframe/wgpu"]
+accessibility = ["eframe/accesskit"]
+windows7 = ["eframe/glow"]
+
+[dependencies]
+vectorcraft-engine = { workspace = true }
+vectorcraft-ui-egui = { workspace = true }
+vectorcraft-text = { workspace = true }
+eframe = { workspace = true, features = ["default_fonts", "wayland", "x11"] }
+egui = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = { workspace = true }
+webbrowser = { workspace = true }
+# The window's monitors, size and position (the same winit eframe runs on).
+winit = { version = "0.30", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+clipboard-win = { workspace = true }

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
-default-members = ["crates/*", "apps/vectorcraft", "apps/vectorcraft-cli", "xtask"]
+default-members = ["crates/*", "apps/vectorcraft", "apps/vectorcraft-cli", "apps/trowel", "xtask"]
 
 [workspace.package]
 version = "0.8.0"

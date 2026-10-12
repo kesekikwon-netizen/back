@@ -62,6 +62,8 @@ pub const TABLE: &[(&str, Class)] = &[
     ("metafile", Class::Layer(3)),
     ("plugins", Class::Layer(2)),
     ("affinity", Class::Standalone),
+    // Trowel: the archaeological shell over the same engine (apps/trowel/src/shell).
+    ("trowel", Class::Exempt),
 ];
 
 /// Explicit orderings *within* a layer (earlier may be used by later).
