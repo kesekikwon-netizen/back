@@ -137,7 +137,7 @@ labels! {
 
     // The start screen (section 3, J004).
     PRODUCT_NAME => "Trowel" / "트루엘",
-    START_LEAD => "An excavation drawing: plans, sections, finds." / "发掘图：平面���剖面·遗物。",
+    START_LEAD => "고고학 기록을 위한 도면 프로그램" / "고고학 기록을 위한 도면 프로그램",
     START_NEW_DRAWING => "New drawing" / "새 도면",
     START_OPEN_STORE => "Open store" / "저장소 열기",
     START_NEW_TRACING => "New tracing" / "새 그리기",
@@ -145,6 +145,15 @@ labels! {
     START_STRATA => "Strata survey file" / "Strata 조사 파일",
     START_PICK_SITE => "Make a chosen survey" / "선택 조사 만들기",
     START_LAST_SITE => "The last survey" / "마지막 조사로",
+    // The start screen (design §1 「Strata 홈과 같은 것」, J004) — the design's own words.
+    START_HEADING => "광릉리 상궁" / "광릉리 상궁",
+    START_TEMPLATES => "도면 템플릿" / "도면 템플릿",
+    RAIL_NEXT => "다음" / "다음",
+    BOOK_OPEN => "이어서 그리기" / "이어서 그리기",
+    START_STRATA_FILE => "Strata survey file" / "Strata 조사 파일",
+    START_DESCA => "desca sections" / "desca 단면",
+    START_POINTS => "Survey points" / "측점",
+    START_UNDERLAY => "Underlay" / "밑그림",
     // The status bar (section 3).
     COORDINATES => "Coordinates" / "좌표",
     UNSAVED => "Unsaved" / "저장 안 됨",

@@ -73,7 +73,7 @@ pub fn trowel_frame(app: &mut VectorcraftApp, ui: &mut Ui, fonts: &mut fonts::Fa
         }
         // With nothing open, the canvas would show VectorCraft's Home view. Trowel draws its
         // own start screen there instead (J004), so no archaeology ever appears as VectorCraft.
-        if !start_screen::show_if_empty(app, ui, app.ui_language().code()) {
+        if !start_screen::show_if_home(app, ui, app.ui_language().code()) {
             canvas::show(app, ui);
         }
     });
