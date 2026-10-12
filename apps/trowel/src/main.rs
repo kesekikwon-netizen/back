@@ -292,7 +292,15 @@ fn main() -> std::process::ExitCode {
             "Trowel",
             native_options(),
             Box::new(move |cc| {
-                let mut app = VectorcraftApp::new(Session::new(), services(cc.winit_window().cloned()));
+                let mut session = Session::new();
+                // Trowel's own commands are added to the session rather than registered in the
+                // engine: an engine command's label is a VectorCraft interface string that every
+                // language catalog must translate, and 굴광선·토층선·따로 are not VectorCraft
+                // vocabulary. Added commands run exactly like built-in ones — enablement, the
+                // journal, the undo guard, the control channel.
+                let added = session.add_commands(trowel_engine::cmd::legend::specs());
+                log::info!("trowel: {added} legend commands registered");
+                let mut app = VectorcraftApp::new(session, services(cc.winit_window().cloned()));
                 load_prefs(&mut app, saved.clone());
                 app.custom_titlebar = CUSTOM_TITLEBAR;
                 if let Some(port) = control_port {

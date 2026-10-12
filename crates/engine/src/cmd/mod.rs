@@ -95,6 +95,11 @@ pub type Run = fn(&mut Session, &Value) -> Result<Value>;
 pub type Enabled = fn(&Session) -> std::result::Result<(), String>;
 
 /// Metadata + implementation for one command.
+///
+/// Copy so a caller can hold one by value: the registry is a static list, but a product
+/// built on this engine adds its own commands to the session at startup (see
+/// [`Session::add_commands`]).
+#[derive(Clone, Copy)]
 pub struct CommandSpec {
     pub id: &'static str,
     pub label: &'static str,

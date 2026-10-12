@@ -12,6 +12,7 @@
 //! Nothing here panics and nothing reaches for a file the user did not name; `Result` and
 //! `Option` all the way, as `AGENTS.md` requires of shipped code.
 
+pub mod cmd;
 pub mod legend;
 pub mod library;
 pub mod preset;

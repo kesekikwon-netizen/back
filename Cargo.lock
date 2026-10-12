@@ -4142,6 +4142,7 @@ dependencies = [
  "log",
  "rfd",
  "serde_json",
+ "trowel-engine",
  "vectorcraft-engine",
  "vectorcraft-text",
  "vectorcraft-ui-egui",
@@ -4156,6 +4157,8 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "vectorcraft-doc",
+ "vectorcraft-engine",
 ]
 
 [[package]]

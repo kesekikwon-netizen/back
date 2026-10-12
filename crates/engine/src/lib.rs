@@ -829,6 +829,10 @@ pub struct Session {
     pub draw_inside: Option<NodeId>,
     untitled_counter: u32,
     /// Session-level state of the menu commands (saved selections, guide lock).
+    /// Commands this product adds on top of the registry, registered once at startup (see
+    /// [`Session::add_commands`]). They run exactly like built-in ones — enablement, the
+    /// journal, the undo guard — and a built-in id always wins over an added one.
+    extra: Vec<cmd::CommandSpec>,
     pub(crate) menu: cmd::menucmds::MenuState,
     /// The selected gradient stop (`gradient.selectStop`) and whose gradient it was selected on,
     /// shared by the Gradient tool's annotator, the Gradient and Color panels and agents: read it
@@ -939,6 +943,7 @@ impl Session {
             swatch_libraries: Default::default(),
             freeform_point: None,
             style_libraries: Default::default(),
+            extra: vec![],
             libraries: Default::default(),
             recent_urls: vec![],
             ui_language: None,
@@ -1096,8 +1101,32 @@ impl Session {
     }
 
     /// Execute a command by id. This is THE entry point for every frontend.
+    /// Commands this product adds on top of the registry, registered once at startup.
+    ///
+    /// A built-in id always wins: an added command that claims one is dropped rather than
+    /// shadowing a shipped command, and a repeated id is dropped too. Returns how many were
+    /// added, so a product can say so at launch instead of failing quietly.
+    pub fn add_commands(&mut self, specs: impl IntoIterator<Item = cmd::CommandSpec>) -> usize {
+        let mut added = 0;
+        for spec in specs {
+            if cmd::find_command(spec.id).is_some() || self.extra.iter().any(|c| c.id == spec.id) {
+                continue;
+            }
+            self.extra.push(spec);
+            added += 1;
+        }
+        added
+    }
+
+    /// The commands this product added, in the order it added them.
+    pub fn extra_commands(&self) -> &[cmd::CommandSpec] {
+        &self.extra
+    }
     pub fn execute(&mut self, id: &str, params: &Value) -> Result<Value> {
-        let spec = find_command(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
+        let spec = find_command(id)
+            .copied()
+            .or_else(|| self.extra.iter().find(|c| c.id == id).copied())
+            .ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
         // Clear's menu needs a selection; an agent supplying explicit targets only needs a
         // document. The command validates those targets before making any edit.
         let enabled = if id == "edit.clear" && params.get("ids").is_some() { cmd::has_doc(self) } else { (spec.enabled)(self) };

@@ -63,7 +63,10 @@ pub const TABLE: &[(&str, Class)] = &[
     ("plugins", Class::Layer(2)),
     ("affinity", Class::Standalone),
     // Trowel: the archaeological shell over the same engine (apps/trowel/src/shell).
-    // Trowel: the archaeological domain, beside the egui shell.
+    // Trowel's archaeological domain. It holds the `legend.*` commands, so it sits beside the
+    // egui shell at L6 and may use the engine (L5). The engine's own command labels are
+    // VectorCraft interface strings every language catalog must translate; Trowel's vocabulary
+    // is not, so the commands are added to the session (Session::add_commands) instead.
     ("trowel-engine", Class::Layer(6)),
     ("trowel", Class::Exempt),
 ];
