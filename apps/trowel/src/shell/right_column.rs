@@ -79,8 +79,21 @@ struct Panel {
 
 pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let lang = app.ui_language().code();
-    let frame = egui::Frame::NONE.fill(tokens::SURFACE).inner_margin(egui::Margin::ZERO).stroke(Stroke::new(1.0, tokens::LINE));
+    // The frame carries no margin and no stroke, and that is load-bearing rather than
+    // tidiness. egui reserves this panel's width for whatever comes after it by moving the
+    // parent `Ui`'s cursor onto the panel's *frame response rect* (the
+    // `cursor.max[axis] = visible_outer_rect.min[axis]` block in egui 0.36's
+    // `containers/panel.rs`), and that rect is the content's rect plus the frame's margin —
+    // so a 1-point stroke leaves the `CentralPanel` next door starting 1 point inside this
+    // column, and a row wider than the column leaves it further inside still. Either way the
+    // start screen's fill lands on this column's left edge. With a marginless frame the
+    // response rect *is* the panel's own rect, so the reservation is exact whatever the
+    // contents measure; the hairline the design draws is painted inside the panel instead.
+    let frame = egui::Frame::NONE.fill(tokens::SURFACE);
     egui::Panel::right("trowel_inspector").resizable(true).exact_size(tokens::INSPECTOR_W).frame(frame).show(ui, |ui| {
+        // The column's border, on the column's own rect, which is also this `Ui`'s clip — so
+        // it stays inside the column however the sections below are laid out.
+        ui.painter().rect_stroke(ui.clip_rect(), 0.0, Stroke::new(1.0, tokens::LINE), egui::StrokeKind::Inside);
         let total = ui.available_height();
         let h_palette = PALETTE_FIXED.min((total * 0.30).max(96.0));
         let h_props = PROPERTIES_FIXED.min((total * 0.24).max(88.0));
@@ -97,13 +110,11 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
 
 /// One of the column's three sections, `height` points tall, spanning the column's width.
 fn section(ui: &mut Ui, width: f32, height: f32, body: impl FnOnce(&mut Ui)) {
-    let top = ui.cursor().min.y;
     let rect = egui::Rect::from_min_size(ui.cursor().min, vec2(width, height));
     ui.allocate_ui(rect.size(), |ui| {
         ui.set_max_height(height);
         body(ui);
     });
-    let _ = top;
 }
 
 /// 「그리기 팔레트」 — the weight chips, the hatch, the dash and 「잘린 면」, whatever
@@ -292,6 +303,54 @@ fn legend_line(app: &mut VectorcraftApp, ui: &mut Ui, lang: &str, line: &Value, 
     });
 
     // 굵기 칩 — picking one changes every stroke on the line's layer at once (§7).
+    // 그 레이어의 선 하나씩 — 「줄을 펼치면 그 레이어의 선이 하나씩 보입니다」(명세 7절).
+    // `.lrow.obj`: 높이 20, padding-left 36, 이름(ink2) + 파선 견본 · 굵기(mono 10).
+    let contents = app.run("legend.layerContents", json!({ "layer": layer })).ok();
+    let objects = contents.as_ref().and_then(|c| c.get("objects")).and_then(Value::as_array).cloned().unwrap_or_default();
+    let on_drawing = contents.as_ref().and_then(|c| c.get("onDrawing")).and_then(Value::as_bool).unwrap_or(false);
+    if !on_drawing {
+        ui.horizontal(|ui| {
+            ui.add_space(36.0);
+            ui.label(egui::RichText::new(labels::LAYER_MISSING.text(lang)).size(11.0).color(tokens::FAINT));
+        });
+    } else if objects.is_empty() {
+        ui.horizontal(|ui| {
+            ui.add_space(36.0);
+            ui.label(egui::RichText::new(labels::LAYER_EMPTY.text(lang)).size(11.0).color(tokens::FAINT));
+        });
+    } else {
+        let held = selected_ids(app);
+        for o in &objects {
+            let id = o.get("id").and_then(Value::as_u64).unwrap_or(0);
+            let name = o.get("name").and_then(Value::as_str).unwrap_or("");
+            let w = o.get("weight").and_then(Value::as_f64);
+            let dashed = o.get("dashed").and_then(Value::as_bool).unwrap_or(false);
+            let ink = if held.contains(&id) { tokens::INK } else { tokens::INK2 };
+            ui.horizontal(|ui| {
+                ui.add_space(36.0);
+                ui.spacing_mut().item_spacing = vec2(6.0, 0.0);
+                let (r, _) = ui.allocate_exact_size(vec2(20.0, 12.0), egui::Sense::hover());
+                let p = ui.painter();
+                if dashed {
+                    for i in 0..3 {
+                        let x = r.left() + 2.0 + i as f32 * 6.0;
+                        p.line_segment([egui::pos2(x, r.center().y + 2.0), egui::pos2(x + 3.0, r.center().y - 2.0)], egui::Stroke::new(1.0, ink));
+                    }
+                } else {
+                    p.line_segment([egui::pos2(r.left(), r.center().y), egui::pos2(r.right(), r.center().y)], egui::Stroke::new(1.0, ink));
+                }
+                let shown = if name.is_empty() { format!("{} #{id}", labels::STROKE.text(lang)) } else { name.to_string() };
+                ui.label(egui::RichText::new(short_to(&shown, 112.0, 11.0)).size(11.0).color(ink));
+                ui.add_space(ui.available_width().max(0.0));
+                let wtext = match w {
+                    Some(v) => labels::weight_label(v),
+                    None => labels::NO_STROKE.text(lang).to_string(),
+                };
+                ui.label(egui::RichText::new(wtext).size(10.0).color(tokens::MUTED));
+            });
+        }
+    }
+
     ui.horizontal(|ui| {
         ui.add_space(14.0);
         ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
@@ -321,21 +380,28 @@ fn legend_line(app: &mut VectorcraftApp, ui: &mut Ui, lang: &str, line: &Value, 
 }
 
 /// 「굵기 한 번에」 — 「어디 · 어떻게 · 값」 and 「따로 바꾼 선도 함께」 (§7).
+///
+/// The 「어디 · 어떻게 · 값」 triple and the 「→」 button sit on one row, the checkbox on the
+/// next. Both rows must stay narrower than the column: a row wider than the column grows
+/// this panel's `Ui::min_rect` past its own edge, and egui reserves the panel's width from
+/// that rect (see [`show`]), which would take the space out of the `CentralPanel` beside it.
+/// The row below measures 68 + 62 + 120 (the theme's slider width) + 4 × 4 + the button ≈ 288
+/// points against the column's 300.
 fn weight_at_once(app: &mut VectorcraftApp, ui: &mut Ui, lang: &str) {
     let scale = PANEL.with(|p| p.borrow().scale);
     tokens::rule(ui);
     ui.label(egui::RichText::new(labels::WEIGHT_AT_ONCE.text(lang)).strong().size(11.0).color(tokens::INK));
+    let mut next = scale;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing = vec2(4.0, 0.0);
-        let mut next = scale;
-        egui::ComboBox::from_id_salt("legend_scope").selected_text(scope_label(scale.where_, lang)).width(78.0).show_ui(ui, |ui| {
+        egui::ComboBox::from_id_salt("legend_scope").selected_text(scope_label(scale.where_, lang)).width(68.0).show_ui(ui, |ui| {
             for (id, label) in [(SCOPE_SET, labels::WHERE_SET), (SCOPE_DRAWING, labels::WHERE_DRAWING), (SCOPE_BOOK, labels::WHERE_BOOK)] {
                 ui.selectable_value(&mut next.where_, id, label.text(lang));
             }
         });
         egui::ComboBox::from_id_salt("legend_how")
             .selected_text(if scale.how == HOW_STEP { labels::HOW_STEP.text(lang) } else { labels::HOW_RATIO.text(lang) })
-            .width(72.0)
+            .width(62.0)
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut next.how, HOW_RATIO, labels::HOW_RATIO.text(lang));
                 ui.selectable_value(&mut next.how, HOW_STEP, labels::HOW_STEP.text(lang));
@@ -343,8 +409,6 @@ fn weight_at_once(app: &mut VectorcraftApp, ui: &mut Ui, lang: &str) {
         if next.how == HOW_RATIO {
             ui.add(egui::DragValue::new(&mut next.factor).speed(0.02).range(0.05..=4.0).prefix("×").custom_formatter(|v, _| format!("{v:.2}")));
         }
-        ui.checkbox(&mut next.include, egui::RichText::new(labels::WITH_SEPARATE.text(lang)).size(10.0).color(tokens::MUTED));
-        PANEL.with(|p| p.borrow_mut().scale = next);
         if ui.add(egui::Button::new(egui::RichText::new("→").size(12.0))).on_hover_text(labels::WEIGHT_AT_ONCE.text(lang)).clicked() {
             let mut params = json!({ "where": next.where_, "how": next.how, "includeOverrides": next.include });
             if next.how == HOW_RATIO {
@@ -353,6 +417,8 @@ fn weight_at_once(app: &mut VectorcraftApp, ui: &mut Ui, lang: &str) {
             note(app.run("legend.applyScale", params).err().unwrap_or_default());
         }
     });
+    ui.checkbox(&mut next.include, egui::RichText::new(labels::WITH_SEPARATE.text(lang)).size(10.0).color(tokens::MUTED));
+    PANEL.with(|p| p.borrow_mut().scale = next);
     let note = PANEL.with(|p| p.borrow().note.clone());
     if !note.is_empty() {
         ui.label(egui::RichText::new(note).size(10.0).color(tokens::CAUTION));
@@ -419,6 +485,24 @@ fn properties(app: &mut VectorcraftApp, ui: &mut Ui, lang: &str) {
     }
     ui.label(egui::RichText::new(format!("{} {n}", labels::KIND.text(lang))).size(11.0).color(tokens::INK2));
     ui.label(egui::RichText::new(format!("{} ▼ · {}", labels::PERIOD.text(lang), labels::PICK.text(lang))).size(11.0).color(tokens::PENDING));
+}
+
+/// Cut to `width` points with an ellipsis — the design's rule for a name with more to say than
+/// the space allows (`.lrow .nm` is `overflow:hidden; text-overflow:ellipsis`).
+pub fn short_to(s: &str, width: f32, size: f32) -> String {
+    let per = size * 1.02;
+    let max = ((width / per).floor() as usize).max(1);
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut kept: String = s.chars().take(max.saturating_sub(1)).collect();
+    kept.push('…');
+    kept
+}
+
+/// The nodes the user has selected, so a row can be drawn as the current one (`.lrow.obj.cur`).
+fn selected_ids(app: &VectorcraftApp) -> std::collections::HashSet<u64> {
+    app.session.active().map(|d| d.selection.objects.iter().map(|i| i.0).collect()).unwrap_or_default()
 }
 
 /// A section's name, set in the semibold face.

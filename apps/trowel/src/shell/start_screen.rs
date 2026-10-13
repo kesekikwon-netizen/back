@@ -115,9 +115,15 @@ pub fn show_if_home(app: &mut VectorcraftApp, ui: &mut Ui, lang: &str) -> bool {
 
 /// Trowel's start screen: the hero band, the two columns, the connector strip.
 pub fn show(app: &mut VectorcraftApp, ui: &mut Ui, lang: &str, site: &Site, survey: &Survey) {
-    // `max_rect`, not `available_rect_before_wrap`: the latter can reach past the panel this
-    // screen is in, and the fill then painted over the right column drawn before it.
-    let area = ui.available_rect_before_wrap();
+    // The white the design's `.home` sits on, painted over the panel this screen is drawn in
+    // and no further. `available_rect_before_wrap` is *not* bounded by the clip rect — egui
+    // 0.36 computes it as `max_rect ∩ cursor` (`layout.rs::available_from_cursor_max_rect`)
+    // — and `max_rect` grows to whatever the parent last laid out, so a neighbour that took
+    // its space wrongly (or a row wider than its own column) would otherwise let this fill
+    // run over it. The clip rect is the panel's own rect: `CentralPanel::show_inside_dyn`
+    // sets it with `panel_ui.set_clip_rect(outer_rect)` and `Painter::add` stores that clip
+    // with every shape, so a rect inside it cannot paint outside it.
+    let area = ui.available_rect_before_wrap().intersect(ui.clip_rect());
     ui.painter().rect_filled(area, 0.0, tokens::SURFACE);
     // `.home` padding: 20 top, 32 sides, 16 bottom.
     let inner = Rect::from_min_size(area.min + vec2(32.0, 20.0), vec2((area.width() - 64.0).max(0.0), (area.height() - 36.0).max(0.0)));
