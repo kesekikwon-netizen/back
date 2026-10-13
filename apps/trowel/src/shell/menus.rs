@@ -11,12 +11,26 @@
 //! `menus::menu_bar` cannot take a tree of its own.
 
 use egui::{RichText, Ui};
-use serde_json::Value;
+use serde_json::{Value, json};
+use trowel_engine::cmd::magnifier::{self, Side};
 use vectorcraft_ui_egui::menus::{self, Entry, Item};
 use vectorcraft_ui_egui::{VectorcraftApp, tl};
 
 use super::labels;
 use super::tokens::{FAINT, INK};
+
+/// The magnifier's drag direction, at the foot of 편집 (design 2.1 §10: «오른쪽으로 끌면
+/// 축소 … 방향은 환경설정에서 바꿀 수 있습니다»): two items, one per side, each carrying the
+/// side it sets. Trowel has no preferences screen of its own yet, so the setting lives here
+/// beside `Preferences…` rather than in the VectorCraft dialog, which is the other products'
+/// settings too.
+fn magnifier_items(lang: &str) -> Vec<Item> {
+    vec![
+        Item::Sep,
+        Item::Cmd(labels::DRAG_IN_LEFT.text(lang), magnifier::DRAG, json!({ "side": "left" })),
+        Item::Cmd(labels::DRAG_IN_RIGHT.text(lang), magnifier::DRAG, json!({ "side": "right" })),
+    ]
+}
 
 /// The `도면` (Drawing) menu, in the design's order. An item whose task has not landed is a
 /// [`Item::Todo`], which the menus draw disabled — the same dimmed 「준비 중」 the ribbon uses.
@@ -54,6 +68,12 @@ pub fn tree(app: &VectorcraftApp) -> Vec<(&'static str, Vec<Item>)> {
         menus::menu_tree_named(app.session.prefs.font_names_in_english).into_iter().filter(|(title, _)| *title != "VectorCraft").collect();
     let at = tree.iter().position(|(title, _)| *title == "View").unwrap_or(tree.len());
     tree.insert(at, ("Drawing", drawing_menu()));
+    // J002: the magnifier's drag direction joins 편집, whose Preferences… is what the design
+    // names («환경설정에서 바꿀 수 있습니다»).
+    let lang = app.ui_language().code();
+    if let Some((_, items)) = tree.iter_mut().find(|(title, _)| *title == "Edit") {
+        items.extend(magnifier_items(lang));
+    }
     tree
 }
 
@@ -111,11 +131,7 @@ fn body(app: &mut VectorcraftApp, ui: &mut Ui, items: &[Item], chosen: &mut Opti
                 }
             }
             Entry::Item(row) => {
-                let mark = match row.checked {
-                    Some(true) => "✓  ",
-                    Some(false) => "     ",
-                    None => "",
-                };
+                let mark = mark(&row);
                 let text = format!("{mark}{}", row.label);
                 let button = egui::Button::new(RichText::new(text).size(13.0)).shortcut_text(row.shortcut.unwrap_or(""));
                 let resp = ui.add_enabled(row.enabled, button);
@@ -132,6 +148,27 @@ fn body(app: &mut VectorcraftApp, ui: &mut Ui, items: &[Item], chosen: &mut Opti
             }
         }
     }
+}
+
+/// The mark a menu row is drawn with: a check for what is on. Trowel's own items are commands
+/// the menus hold no state for (`checked` is `None` for them), so what is on is read from
+/// where the state is — the magnifier's drag direction (design 2.1 §10).
+fn mark(row: &menus::Row) -> &'static str {
+    let on = row.checked.or_else(|| magnifier_side(row).map(|set| set == magnifier::side()));
+    match on {
+        Some(true) => "✓  ",
+        Some(false) => "     ",
+        None => "",
+    }
+}
+
+/// The side a magnifier-drag item sets, or `None` for any other item.
+fn magnifier_side(row: &menus::Row) -> Option<Side> {
+    let (id, params) = row.command?;
+    if id != magnifier::DRAG {
+        return None;
+    }
+    Side::parse(params.get("side")?.as_str()?)
 }
 
 #[cfg(test)]
@@ -168,5 +205,34 @@ mod tests {
                 other => panic!("the drawing menu holds no live command yet: {other:?}"),
             }
         }
+    }
+
+    /// Design 2.1 §10: «방향은 환경설정에서 바꿀 수 있습니다» — the two sides are items of
+    /// 편집, and the one that is set now is checked.
+    #[test]
+    fn the_magnifier_drag_items_mark_the_side_that_is_set() {
+        let app = VectorcraftApp::new(vectorcraft_engine::Session::new(), Default::default());
+        let marks = |side: Side| {
+            magnifier::set_side(side);
+            marks_of(&app, magnifier::DRAG)
+        };
+        assert_eq!(marks(Side::Left), ["✓  ", "     "], "왼쪽으로 끌면 확대 is the default");
+        assert_eq!(marks(Side::Right), ["     ", "✓  "], "오른쪽으로 끌면 확대, and the other side is unchecked");
+        magnifier::set_side(Side::Left);
+    }
+
+    /// The marks the items of command `id` are drawn with, in the order the bar holds them.
+    fn marks_of(app: &VectorcraftApp, id: &str) -> Vec<String> {
+        let Some((_, items)) = tree(app).into_iter().find(|(title, _)| *title == "Edit") else {
+            return Vec::new();
+        };
+        items
+            .iter()
+            .filter(|i| matches!(i, Item::Cmd(_, cmd, _) if *cmd == id))
+            .filter_map(|i| match menus::entry(app, i)? {
+                Entry::Item(row) => Some(mark(&row).to_string()),
+                _ => None,
+            })
+            .collect()
     }
 }

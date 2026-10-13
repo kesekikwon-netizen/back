@@ -10,3 +10,4 @@
 //! See [`legend`] for the rule these exist to carry: **one legend line is one layer**.
 
 pub mod legend;
+pub mod magnifier;

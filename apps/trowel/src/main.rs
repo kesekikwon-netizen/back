@@ -42,6 +42,10 @@ fn log_dir() -> Option<std::path::PathBuf> {
     Some(prefs_path()?.parent()?.join("logs"))
 }
 
+/// The key Trowel's own settings ride under in the preferences file, beside the interface
+/// state's own keys.
+const PREFS_KEY: &str = "trowel";
+
 /// Runs without preferences (`TROWEL_NO_PREFS`, agents' test runs) neither reads
 /// nor writes them, and leaves no log file behind.
 fn prefs_enabled() -> bool {
@@ -50,25 +54,70 @@ fn prefs_enabled() -> bool {
 
 /// The saved UI preferences, read before the window opens (they hold its size and
 /// position). A file that can't be read or parsed leaves the defaults.
-fn read_prefs() -> Option<vectorcraft_ui_egui::UiState> {
+fn read_prefs() -> SavedPrefs {
     if !prefs_enabled() {
-        return None;
+        return SavedPrefs::default();
     }
-    let bytes = prefs_path().and_then(|p| std::fs::read(p).ok())?;
-    serde_json::from_slice(&bytes).ok()
+    let Some(bytes) = prefs_path().and_then(|p| std::fs::read(p).ok()) else {
+        return SavedPrefs::default();
+    };
+    let raw = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    SavedPrefs { ui: serde_json::from_value(raw.clone()).ok(), trowel: TrowelPrefs::of(&raw) }
 }
 
-fn load_prefs(app: &mut VectorcraftApp, saved: Option<vectorcraft_ui_egui::UiState>) {
+/// Trowel's own settings, as the preferences file holds them: a `trowel` object beside the
+/// interface state, which is [`vectorcraft_ui_egui::UiState`]'s own. One file, read in one
+/// place and written in one place — the design settles these words for Trowel (design 2.1
+/// §10), so they are not engine preferences the VectorCraft Preferences dialog would show the
+/// other products built on this engine.
+#[derive(Clone, Debug, Default)]
+struct TrowelPrefs {
+    /// Which way a drag of the magnifier zooms in (design 2.1 §10).
+    magnifier_drag: trowel_engine::cmd::magnifier::Side,
+}
+
+impl TrowelPrefs {
+    /// Read from the `trowel` object of the saved preferences. A key that is missing, or not
+    /// one the settings name, leaves the default.
+    fn of(saved: &serde_json::Value) -> Self {
+        let side = saved.get(PREFS_KEY).and_then(|t| t.get("magnifierDrag")).and_then(serde_json::Value::as_str);
+        Self { magnifier_drag: side.and_then(trowel_engine::cmd::magnifier::Side::parse).unwrap_or_default() }
+    }
+
+    /// The object to write beside the interface state.
+    fn to_value(&self) -> serde_json::Value {
+        serde_json::json!({ "magnifierDrag": self.magnifier_drag.as_str() })
+    }
+
+    /// The settings as they are now, which is what gets written on exit: the direction may
+    /// have been flipped since the window opened.
+    fn now() -> Self {
+        Self { magnifier_drag: trowel_engine::cmd::magnifier::side() }
+    }
+}
+
+/// The preferences as they were saved: the interface state the window opens with, and
+/// Trowel's own settings from the same file.
+#[derive(Clone, Debug, Default)]
+struct SavedPrefs {
+    ui: Option<vectorcraft_ui_egui::UiState>,
+    trowel: TrowelPrefs,
+}
+
+fn load_prefs(app: &mut VectorcraftApp, saved: &SavedPrefs) {
     if !prefs_enabled() {
         return;
     }
-    if let Some(ui) = saved {
-        app.ui = ui.sanitized();
+    if let Some(ui) = &saved.ui {
+        app.ui = ui.clone().sanitized();
     }
     vectorcraft_ui_egui::prefs_dialog::restore(app);
+    // The magnifier's drag direction (design 2.1 §10) is a Trowel setting rather than an
+    // engine preference: it is the one the `trowel.magnifierDrag` command flips.
+    trowel_engine::cmd::magnifier::set_side(saved.trowel.magnifier_drag);
 }
 
-fn save_prefs(app: &VectorcraftApp) {
+fn save_prefs(app: &VectorcraftApp, trowel: &TrowelPrefs) {
     if !prefs_enabled() {
         return;
     }
@@ -77,7 +126,11 @@ fn save_prefs(app: &VectorcraftApp) {
     ui.engine_prefs = app.session.prefs.to_json();
     // Preferences are best effort: a failed write keeps the previous file, and
     // the app is already closing, so there is nothing left to tell the user.
-    if let Ok(bytes) = serde_json::to_vec_pretty(&ui) {
+    let mut saved = serde_json::to_value(&ui).unwrap_or(serde_json::Value::Null);
+    if let Some(obj) = saved.as_object_mut() {
+        obj.insert(PREFS_KEY.into(), trowel.to_value());
+    }
+    if let Ok(bytes) = serde_json::to_vec_pretty(&saved) {
         let _ = fileio::write_atomic(&path, &bytes);
     }
 }
@@ -247,7 +300,13 @@ impl eframe::App for App {
         file_access::unconfined(|| self.logic_frame(ctx, frame));
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
-        file_access::unconfined(|| self.app.raw_input_hook(raw));
+        file_access::unconfined(|| {
+            self.app.raw_input_hook(raw);
+            // J002: a press on the magnifier is taken out of the input before egui sees it —
+            // the Zoom tool's own drag would zoom alongside (design 2.1 §10).
+            let App { app, hold, .. } = self;
+            hold.take_pointer(app, raw);
+        });
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // egui rebuilds the font set during the frame it is set in, so the app's own
@@ -263,13 +322,18 @@ impl eframe::App for App {
         self.fonts = fonts;
     }
     fn on_exit(&mut self) {
-        file_access::unconfined(|| save_prefs(&self.app));
+        file_access::unconfined(|| save_prefs(&self.app, &TrowelPrefs::now()));
     }
 }
 
 impl App {
     fn logic_frame(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frames += 1;
+        // J002: which way a drag of the magnifier zooms in. The direction is a Trowel setting
+        // the `trowel.magnifierDrag` command flips (design 2.1 §10, «방향은 환경설정에서 바꿀
+        // 수 있습니다»), so it is handed to the magnifier each frame rather than held: what
+        // arrives mid-frame is what the next frame drags with.
+        self.hold.set_zoom_in(trowel_engine::cmd::magnifier::side());
         // J002b: before `logic` runs the Z shortcut's own dispatch, so the tool recorded is
         // the one in hand before it — «Z를 쥐는 동안만. 놓으면 쓰던 도구로» (design 2.1 §10).
         self.hold.update(&mut self.app, ctx);
@@ -303,10 +367,10 @@ fn main() -> std::process::ExitCode {
                 // language catalog must translate, and 굴광선·토층선·따로 are not VectorCraft
                 // vocabulary. Added commands run exactly like built-in ones — enablement, the
                 // journal, the undo guard, the control channel.
-                let added = session.add_commands(trowel_engine::cmd::legend::specs());
-                log::info!("trowel: {added} legend commands registered");
+                let added = session.add_commands(trowel_engine::cmd::legend::specs().into_iter().chain(trowel_engine::cmd::magnifier::specs()));
+                log::info!("trowel: {added} commands registered");
                 let mut app = VectorcraftApp::new(session, services(cc.winit_window().cloned()));
-                load_prefs(&mut app, saved.clone());
+                load_prefs(&mut app, &saved);
                 app.custom_titlebar = CUSTOM_TITLEBAR;
                 if let Some(port) = control_port {
                     let rx = control_server::start(port, cc.egui_ctx.clone());
@@ -362,5 +426,42 @@ mod tests {
     #[test]
     fn custom_titlebar_follows_the_platform() {
         assert_eq!(CUSTOM_TITLEBAR, !cfg!(target_os = "macos"));
+    }
+
+    /// Design 2.1 §10: «방향은 환경설정에서 바꿀 수 있습니다» — the direction is a setting and
+    /// not a frame's worth of state: what the Edit menu's two items flip is what the next
+    /// launch reads back, under the key Trowel's own settings ride under in the one file the
+    /// window already keeps its size and position in.
+    #[test]
+    fn the_drag_direction_is_read_back_from_the_saved_settings() {
+        use serde_json::json;
+        use trowel_engine::cmd::magnifier::{self, Side};
+
+        magnifier::set_side(Side::Right);
+        let written = TrowelPrefs::now().to_value();
+        assert_eq!(written, json!({ "magnifierDrag": "right" }), "what goes in the file, by name");
+        let file = json!({ "window": { "size": [1600, 988] }, PREFS_KEY: written });
+        assert_eq!(TrowelPrefs::of(&file).magnifier_drag, Side::Right, "and what the next launch reads is the direction that was set");
+        // A file that says nothing, or says something that is not a direction, leaves Trowel's
+        // own default (left is the zoom-in side) rather than guessing at one.
+        assert_eq!(TrowelPrefs::of(&json!({})).magnifier_drag, Side::Left, "no key, the default");
+        assert_eq!(
+            TrowelPrefs::of(&json!({ PREFS_KEY: { "magnifierDrag": "sideways" } })).magnifier_drag,
+            Side::Left,
+            "a value that is not a direction is no value"
+        );
+        magnifier::set_side(Side::Left);
+    }
+
+    /// Trowel's own key is written *beside* the interface state's keys, not among them: the
+    /// window's size and position ride in the same file, and a file carrying `trowel` still
+    /// opens as the interface state it was saved from.
+    #[test]
+    fn the_trowel_key_leaves_the_interface_state_readable() {
+        use serde_json::json;
+
+        let file = json!({ "brightness": "Light", PREFS_KEY: { "magnifierDrag": "right" } });
+        let ui: vectorcraft_ui_egui::UiState = serde_json::from_value(file).expect("the interface state still reads beside Trowel's key");
+        assert_eq!(ui.brightness, vectorcraft_ui_egui::theme::Brightness::Light, "and the interface state's own keys still land");
     }
 }

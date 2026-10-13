@@ -161,6 +161,12 @@ labels! {
     COORDINATES => "Coordinates" / "좌표",
     UNSAVED => "Unsaved" / "저장 안 됨",
 
+    // The Z magnifier (section 10, J002): «왼쪽으로 끌면 확대 … 방향은 환경설정에서 바꿀 수
+    // 있습니다».
+    MAGNIFIER_DRAG => "Magnifier drag" / "돋보기 끌기",
+    DRAG_IN_LEFT => "Drag left zooms in" / "왼쪽으로 끌면 확대",
+    DRAG_IN_RIGHT => "Drag right zooms in" / "오른쪽으로 끌면 확대",
+
     // What is still to come (section 3: 흐린 「준비 중」).
     NOT_READY => "Not ready yet" / "준비 중",
 }
