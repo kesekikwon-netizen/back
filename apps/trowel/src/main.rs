@@ -236,6 +236,8 @@ struct App {
     frames: u64,
     /// Installed fonts covering what the interface fonts lack (Hangul).
     fonts: shell::fonts::Fallback,
+    /// J002b: which tool the magnifier key (Z held) puts back when it is let go.
+    hold: shell::magnifier::Hold,
 }
 
 impl eframe::App for App {
@@ -268,6 +270,9 @@ impl eframe::App for App {
 impl App {
     fn logic_frame(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frames += 1;
+        // J002b: before `logic` runs the Z shortcut's own dispatch, so the tool recorded is
+        // the one in hand before it — «Z를 쥐는 동안만. 놓으면 쓰던 도구로» (design 2.1 §10).
+        self.hold.update(&mut self.app, ctx);
         self.app.logic(ctx);
         // The caption reads the drawing, a `*` when it has unsaved changes, then the
         // product — design 2.1 section 3.
@@ -313,7 +318,8 @@ fn main() -> std::process::ExitCode {
                         eprintln!("trowel: {f}: {e}");
                     }
                 }
-                Ok(Box::new(App { app, frames: 0, fonts: shell::fonts::Fallback::new() }) as Box<dyn eframe::App>)
+                Ok(Box::new(App { app, frames: 0, fonts: shell::fonts::Fallback::new(), hold: shell::magnifier::Hold::default() })
+                    as Box<dyn eframe::App>)
             }),
         )
     });

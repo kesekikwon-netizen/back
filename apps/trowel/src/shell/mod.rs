@@ -17,6 +17,7 @@ pub mod arch_tools;
 pub mod drawing_book;
 pub mod fonts;
 pub mod labels;
+pub mod magnifier;
 pub mod menubar;
 pub mod menus;
 pub mod ribbon;

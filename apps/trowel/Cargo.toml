@@ -35,3 +35,9 @@ winit = { version = "0.30", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { workspace = true }
+
+[dev-dependencies]
+# The magnifier key's busy-gesture test drives a real drag (`Session::pointer`), and its
+# Type-tool test the text being edited, through the document.
+vectorcraft-tools = { workspace = true }
+vectorcraft-doc = { workspace = true }
