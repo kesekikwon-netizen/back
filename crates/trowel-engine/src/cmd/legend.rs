@@ -261,7 +261,42 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             apply_scale
         ),
+        cmd!(
+            query "legend.layerContents",
+            "Legend: Layer Contents",
+            [],
+            None,
+            "{layer} — the strokes on the line's layer, each with its id, its name and the weight it actually carries. The design opens a legend line to see its layer's strokes one by one (§7), so they are read from the drawing rather than assumed from the line",
+            has_doc,
+            layer_contents
+        ),
     ]
+}
+
+/// What a line's layer holds right now, for the rows the panel shows under an opened line.
+/// A line whose layer is not on the drawing yet simply has none: it is a definition, and the
+/// panel says so rather than failing.
+fn layer_contents(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "legend.layerContents";
+    let layer = str_param(p, "layer").ok_or_else(|| bad(C, "missing `layer`"))?;
+    let st = s.doc()?;
+    let Some(root) = layer_id(&st.doc, layer) else {
+        return Ok(json!({ "layer": layer, "onDrawing": false, "objects": [] }));
+    };
+    let objects: Vec<Value> = strokes_under(&st.doc, root)
+        .iter()
+        .filter_map(|id| st.doc.node(*id).map(|n| (id, n)))
+        .map(|(id, n)| {
+            let stroke = n.appearance.stroke();
+            json!({
+                "id": id.0,
+                "name": n.name.clone(),
+                "weight": stroke.map(|st| st.width),
+                "dashed": stroke.is_some_and(|st| st.dash.as_ref().is_some_and(|d| d.is_dashed())),
+            })
+        })
+        .collect();
+    Ok(json!({ "layer": layer, "onDrawing": true, "objects": objects }))
 }
 
 /// The `Group` a name stands for, for the panel's three-set switch.
@@ -477,7 +512,7 @@ mod tests {
     fn fresh() -> Session {
         with_legend(|l| *l = LegendState::default());
         let mut s = Session::new();
-        assert_eq!(s.add_commands(specs()), 9, "the fixture must register the commands");
+        assert_eq!(s.add_commands(specs()), 10, "the fixture must register the commands");
         s
     }
 
@@ -507,11 +542,44 @@ mod tests {
         strokes_under(&s.doc().ok()?.doc, layer_named(s, layer)?).first().copied()
     }
 
+    /// Opening a legend line shows that layer's strokes one by one (§7). They come from the
+    /// drawing, and a stroke the user set by hand carries its own weight, not the line's.
+    #[test]
+    fn an_opened_line_shows_the_strokes_on_its_layer() {
+        let mut s = drawing();
+        let layer = layer_named(&s, "feature_poly").unwrap();
+        s.execute("layer.setCurrent", &json!({ "id": layer.0 })).unwrap();
+        let stray = s.execute("shape.rectangle", &json!({ "x": 300, "y": 300, "width": 40, "height": 40 })).unwrap();
+        let stray = NodeId(stray["id"].as_u64().unwrap_or(0));
+        s.execute("stroke.set", &json!({ "ids": [stray.0], "weight": 1.6, "dash": [2.0, 1.0] })).unwrap();
+
+        let out = s.execute("legend.layerContents", &json!({ "layer": "feature_poly" })).unwrap();
+        assert_eq!(out["onDrawing"], true);
+        let objects = out["objects"].as_array().map(Vec::len).unwrap_or(0);
+        assert_eq!(objects, 2, "both strokes on the line's layer");
+        let row = out["objects"].as_array().unwrap().iter().find(|o| o["id"] == stray.0).unwrap();
+        assert_eq!(row["weight"], 1.6, "the weight the stroke actually carries");
+        assert_eq!(row["dashed"], true);
+        // The other line's layer is its own.
+        let other = s.execute("legend.layerContents", &json!({ "layer": "feature_floor" })).unwrap();
+        assert_eq!(other["objects"].as_array().map(Vec::len).unwrap_or(0), 1);
+    }
+
+    /// A line whose layer is not on the drawing yet has none, and says so instead of failing.
+    #[test]
+    fn a_line_without_its_layer_has_no_contents() {
+        let mut s = drawing();
+        let out = s.execute("legend.layerContents", &json!({ "layer": "frame" })).unwrap();
+        assert_eq!(out["onDrawing"], false);
+        assert_eq!(out["objects"].as_array().map(Vec::len).unwrap_or(0), 0);
+        assert!(s.execute("legend.layerContents", &json!({})).is_err(), "a missing `layer` is an error");
+    }
+
     /// Every command is well formed and none of them is a built-in id.
     #[test]
     fn the_legend_commands_are_well_formed() {
         let specs = specs();
-        assert_eq!(specs.len(), 9);
+        assert_eq!(specs.len(), 10);
         let mut ids: Vec<&str> = specs.iter().map(|c| c.id).collect();
         ids.sort_unstable();
         let n = ids.len();
@@ -531,9 +599,9 @@ mod tests {
         with_legend(|l| *l = LegendState::default());
         let mut s = Session::new();
         assert!(s.execute("legend.list", &json!({})).is_err(), "not registered yet");
-        assert_eq!(s.add_commands(specs()), 9);
+        assert_eq!(s.add_commands(specs()), 10);
         assert!(s.execute("legend.list", &json!({})).is_ok());
-        assert_eq!(s.extra_commands().len(), 9);
+        assert_eq!(s.extra_commands().len(), 10);
     }
 
     /// Registering twice adds nothing the second time, and a built-in id is never shadowed.
@@ -541,7 +609,7 @@ mod tests {
     fn registering_twice_adds_nothing() {
         with_legend(|l| *l = LegendState::default());
         let mut s = Session::new();
-        assert_eq!(s.add_commands(specs()), 9);
+        assert_eq!(s.add_commands(specs()), 10);
         assert_eq!(s.add_commands(specs()), 0);
         let mut squatter = specs();
         squatter[0].id = "object.group";

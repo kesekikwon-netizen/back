@@ -154,6 +154,9 @@ labels! {
     START_DESCA => "desca sections" / "desca 단면",
     START_POINTS => "Survey points" / "측점",
     START_UNDERLAY => "Underlay" / "밑그림",
+    LAYER_EMPTY => "Nothing on that layer yet" / "그 레이어에 아직 선이 없음",
+    STROKE => "Stroke" / "선",
+    NO_STROKE => "no stroke" / "획 없음",
     // The status bar (section 3).
     COORDINATES => "Coordinates" / "좌표",
     UNSAVED => "Unsaved" / "저장 안 됨",
